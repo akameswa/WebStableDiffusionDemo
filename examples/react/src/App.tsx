@@ -6,7 +6,10 @@ import {
   ProgressCallbackPayload,
   setModelCacheDir,
   StableDiffusionPipeline,
-  StableDiffusionXLPipeline
+  StableDiffusionXLPipeline,
+  LatentConsistencyModelPipeline,
+  SimilarImagePipeline,
+  PromptInterpolationPipeline
 } from '@aislamov/diffusers.js'
 import CssBaseline from '@mui/material/CssBaseline';
 import Box from '@mui/material/Box';
@@ -17,13 +20,15 @@ import Grid from '@mui/material/Grid';
 import TextField from '@mui/material/TextField';
 import Button from '@mui/material/Button';
 import Divider from '@mui/material/Divider';
-import { Checkbox, FormControl, InputLabel, MenuItem, Select } from '@mui/material'
+import { Checkbox, FormControl, InputLabel, MenuItem, Select, Tab, Tabs, ImageList, ImageListItem, ImageListItemBar } from '@mui/material';
 import { FormControlLabel } from '@mui/material';
 import { BrowserFeatures, hasFp16 } from './components/BrowserFeatures'
 import { FAQ } from './components/FAQ'
 import { Tensor } from '@xenova/transformers'
 import cv from '@techstark/opencv-js'
 import { StableDiffusionControlNetPipeline } from '../../../dist/pipelines/StableDiffusionControlNetPipeline';
+import { CustomTabPanel } from './components/TabPanel';
+import { RetrieveImages } from './components/ClipClient';
 
 const darkTheme = createTheme({
   palette: {
@@ -45,16 +50,38 @@ interface SelectedPipeline {
 
 const pipelines = [
   {
-    name: 'LCM Dreamshaper FP16 (2.2GB)',
-    repo: 'aislamov/lcm-dreamshaper-fp16',
+    name: 'LCM TinySD FP16 (1.1GB)',
+    repo: 'akameswa/lcm-tiny-sd-onnx-fp16',
     revision: 'main',
     fp16: true,
     width: 512,
     height: 512,
-    steps: 8,
+    steps: 4,
     hasImg2Img: false,
     hasControlNet: false
   },
+  // {
+  //   name: 'TinySD FP16 (1.1GB)',
+  //   repo: 'akameswa/tiny-sd-onnx-fp16',
+  //   revision: 'main',
+  //   fp16: true,
+  //   width: 512,
+  //   height: 512,
+  //   steps: 20,
+  //   hasImg2Img: false,
+  //   hasControlNet: false
+  // },
+  // {
+  //   name: 'LCM Dreamshaper FP16 (2.2GB)',
+  //   repo: 'aislamov/lcm-dreamshaper-fp16',
+  //   revision: 'main',
+  //   fp16: true,
+  //   width: 512,
+  //   height: 512,
+  //   steps: 8,
+  //   hasImg2Img: false,
+  //   hasControlNet: false
+  // },
   // {
   //   name: 'LCM Dreamshaper FP32 (4.2GB)',
   //   repo: 'aislamov/lcm-dreamshaper-v7-onnx',
@@ -64,17 +91,17 @@ const pipelines = [
   //   height: 768,
   //   steps: 8,
   // },
-  {
-    name: 'StableDiffusion 2.1 Base FP16 (2.6GB)',
-    repo: 'aislamov/stable-diffusion-2-1-base-onnx',
-    revision: 'main',
-    fp16: true,
-    width: 512,
-    height: 512,
-    steps: 20,
-    hasImg2Img: true,
-    hasControlNet: false
-  },
+  // {
+  //   name: 'StableDiffusion 2.1 Base FP16 (2.6GB)',
+  //   repo: 'aislamov/stable-diffusion-2-1-base-onnx',
+  //   revision: 'main',
+  //   fp16: true,
+  //   width: 512,
+  //   height: 512,
+  //   steps: 20,
+  //   hasImg2Img: true,
+  //   hasControlNet: false
+  // },
   // {
   //   name: 'StableDiffusion 2.1 Base FP32 (5.1GB)',
   //   repo: 'aislamov/stable-diffusion-2-1-base-onnx',
@@ -84,28 +111,28 @@ const pipelines = [
   //   height: 512,
   //   steps: 20,
   // },
-  {
-    name: 'StableDiffusion 1.5 Base FP16 Canny (2.9GB)',
-    repo: 'jdp8/stable-diffusion-1-5-canny-base-onnx',
-    revision: 'main',
-    fp16: true,
-    width: 512,
-    height: 512,
-    steps: 20,
-    hasImg2Img: true,
-    hasControlNet: true
-  },
-  {
-    name: 'SSD-1B LCM (4.5GB)',
-    repo: 'aislamov/ssd-1b-fp16',
-    revision: 'main',
-    fp16: true,
-    width: 1024,
-    height: 1024,
-    steps: 8,
-    hasImg2Img: false,
-    hasControlNet: false,
-  },
+  // {
+  //   name: 'StableDiffusion 1.5 Base FP16 Canny (2.9GB)',
+  //   repo: 'jdp8/stable-diffusion-1-5-canny-base-onnx',
+  //   revision: 'main',
+  //   fp16: true,
+  //   width: 512,
+  //   height: 512,
+  //   steps: 20,
+  //   hasImg2Img: true,
+  //   hasControlNet: true
+  // },
+  // {
+  //   name: 'SSD-1B LCM (4.5GB)',
+  //   repo: 'aislamov/ssd-1b-fp16',
+  //   revision: 'main',
+  //   fp16: true,
+  //   width: 1024,
+  //   height: 1024,
+  //   steps: 8,
+  //   hasImg2Img: false,
+  //   hasControlNet: false,
+  // },
 ]
 
 function App() {
@@ -113,17 +140,25 @@ function App() {
   const [selectedPipeline, setSelectedPipeline] = useState<SelectedPipeline|undefined>(pipelines[0]);
   const [modelState, setModelState] = useState<'none'|'loading'|'ready'|'inferencing'>('none');
   const [prompt, setPrompt] = useState('An astronaut riding a horse');
+  const [promptA, setPromptA] = useState('An astronaut riding a horse');
+  const [promptB, setPromptB] = useState('A cowboy riding a horse');
   const [negativePrompt, setNegativePrompt] = useState('');
   const [inferenceSteps, setInferenceSteps] = useState(20);
-  const [guidanceScale, setGuidanceScale] = useState(7.5);
-  const [seed, setSeed] = useState('');
+  const [guidanceScale, setGuidanceScale] = useState(1);
+  const [seed, setSeed] = useState('69');
   const [status, setStatus] = useState('Ready');
-  const pipeline = useRef<StableDiffusionXLPipeline|StableDiffusionPipeline|StableDiffusionControlNetPipeline|null>(null);
+  const pipeline = useRef<StableDiffusionXLPipeline|StableDiffusionPipeline|StableDiffusionControlNetPipeline|LatentConsistencyModelPipeline|SimilarImagePipeline|PromptInterpolationPipeline|null>(null);
   const [img2img, setImg2Img] = useState(false);
   const [inputImage, setInputImage] = useState<Float32Array>();
   const [strength, setStrength] = useState(0.8);
   const [controlNetImage, setControlNetImage] = useState<Float32Array>();
   const [runVaeOnEachStep, setRunVaeOnEachStep] = useState(false);
+  const [tab, setTab] = useState(0);
+  const [urlCaptions, setUrlCaptions] = useState<any []>([]);
+  const [numImages, setNumImages] = useState(5);
+  const [differentiation, setDifferentiation] = useState(1);
+  const [urls, seturls] = useState<any []>([]);
+
   useEffect(() => {
     setModelCacheDir('models')
     hasFp16().then(v => {
@@ -138,11 +173,27 @@ function App() {
     setInferenceSteps(selectedPipeline?.steps || 20)
   }, [selectedPipeline])
 
-  const drawImage = async (image: Tensor) => {
+  interface link {
+    canvasUrl: string
+    index: string
+  }
+  const links: link[] = []                       // contains poked and unpoked images
+
+  const drawImage = async (image: Tensor, index: string) => {
     const canvas = document.getElementById('canvas') as HTMLCanvasElement
     if (canvas) {
-      const data = await image.toImageData({ tensorLayout: 'NCWH', format: 'RGB' });
+      const data = await image.toImageData({ tensorLayout: 'NCHW', format: 'RGB' });
       canvas.getContext('2d')!.putImageData(data, 0, 0);
+      if (index === 'Poked') {
+        const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+        ctx.beginPath();
+        ctx.lineWidth = 5;
+        ctx.strokeStyle = "white";
+        ctx.rect(0, 0, 128, 128);
+        ctx.stroke();
+      } 
+      const canvasUrl = await canvas.toDataURL();
+      links.push({canvasUrl, index});
     }
   }
 
@@ -163,17 +214,55 @@ function App() {
     }
     setModelState('loading')
     try {
-      if (pipeline.current) {
-        // @ts-ignore
-        pipeline.current.release()
-      }
-      pipeline.current = await DiffusionPipeline.fromPretrained(
-        selectedPipeline.repo,
-        {
-          revision: selectedPipeline?.revision,
-          progressCallback
+      if(tab==0){
+        if (pipeline.current) {
+          // @ts-ignore
+          pipeline.current.release()
         }
-      )
+        pipeline.current = await LatentConsistencyModelPipeline.fromPretrained(
+          selectedPipeline.repo,
+          {
+            revision: selectedPipeline?.revision,
+            progressCallback
+          }
+        )
+      }else if(tab==1){
+        if (pipeline.current) {
+          // @ts-ignore
+          pipeline.current.release()
+        }
+        pipeline.current = await PromptInterpolationPipeline.fromPretrained(
+          selectedPipeline.repo,
+          {
+            revision: selectedPipeline?.revision,
+            progressCallback
+          }
+        )
+      }else if(tab==2){
+        if (pipeline.current) {
+          // @ts-ignore
+          pipeline.current.release()
+        }
+        pipeline.current = await SimilarImagePipeline.fromPretrained(
+          selectedPipeline.repo,
+          {
+            revision: selectedPipeline?.revision,
+            progressCallback
+          }
+        )
+      }else{
+        if (pipeline.current) {
+          // @ts-ignore
+          pipeline.current.release()
+        }
+        pipeline.current = await DiffusionPipeline.fromPretrained(
+          selectedPipeline.repo,
+          {
+            revision: selectedPipeline?.revision,
+            progressCallback
+          }
+        )
+      }
       setModelState('ready')
     } catch (e) {
       alert(e)
@@ -274,23 +363,59 @@ function App() {
     }
     setModelState('inferencing')
 
-    const images = await pipeline.current.run({
-      prompt: prompt,
-      negativePrompt: negativePrompt,
-      numInferenceSteps: inferenceSteps,
-      guidanceScale: guidanceScale,
-      seed: seed,
-      width: selectedPipeline?.width,
-      height: selectedPipeline?.height,
-      runVaeOnEachStep,
-      progressCallback,
-      img2imgFlag: img2img,
-      inputImage: inputImage,
-      strength: strength,
-      controlNetImage: controlNetImage
-    })
-    await drawImage(images[0])
-    setModelState('ready')
+    if(pipeline.current instanceof LatentConsistencyModelPipeline){
+        const [images, imagesMod] = await pipeline.current.run({
+          prompt: prompt,
+          negativePrompt: negativePrompt,
+          numInferenceSteps: inferenceSteps,
+          guidanceScale: guidanceScale,
+          seed: seed,
+          width: selectedPipeline?.width,
+          height: selectedPipeline?.height,
+          runVaeOnEachStep,
+          progressCallback,
+          img2imgFlag: img2img,
+          inputImage: inputImage,
+          strength: strength,
+        })
+        await drawImage(images[0], 'Normal')
+        await drawImage(imagesMod[0], 'Poked')
+              seturls(links)
+        setModelState('ready')
+    }else if(pipeline.current instanceof PromptInterpolationPipeline){
+        const [images] = await pipeline.current.run({
+          promptA: promptA,
+          promptB: promptB,
+          numImages: numImages,
+          numInferenceSteps: inferenceSteps,
+          seed: seed,
+          width: selectedPipeline?.width,
+          height: selectedPipeline?.height,
+          progressCallback,
+        })
+        for(let i = 0; i < numImages; i++) {
+          await drawImage(images[i][0], (i+1).toString())
+        }
+        seturls(links)
+        setModelState('ready')
+    }
+    else if(pipeline.current instanceof SimilarImagePipeline){
+        const [images] = await pipeline.current.run({
+          prompt: prompt,
+          numImages: numImages,
+          differentiation: differentiation,
+          numInferenceSteps: inferenceSteps,
+          seed: seed,
+          width: selectedPipeline?.width,
+          height: selectedPipeline?.height,
+          progressCallback,
+        })
+        for(let i = 0; i < numImages; i++) {
+          await drawImage(images[i][0], (i+1).toString())
+        }
+        seturls(links)
+        setModelState('ready')
+    }
   }
 
   return (
@@ -298,9 +423,16 @@ function App() {
       <CssBaseline enableColorScheme={true} />
       <Container>
         <BrowserFeatures />
-        <Stack alignItems={'center'}>
-          <p>Built with <a href={"https://github.com/dakenf/diffusers.js"} target={"_blank"}>diffusers.js</a></p>
-        </Stack>
+        <Tabs value={tab} onChange={(e,v) => {
+          setTab(v)
+          setModelState('none')
+        }} centered>
+            <Tab label="Poke" />
+            <Tab label="Prompt Interpolation" />
+            <Tab label="Similar Image Generation" />
+            <Tab label="Dataset Peek" />
+          </Tabs>
+        <CustomTabPanel value={tab} index={0}>
         <Box sx={{ bgcolor: '#282c34' }} pt={4} pl={3} pr={3} pb={4}>
           <Grid container spacing={2}>
             <Grid item xs={6}>
@@ -312,32 +444,32 @@ function App() {
                   onChange={(e) => setPrompt(e.target.value)}
                   value={prompt}
                 />
-                <TextField
+                {/* <TextField
                   label="Negative Prompt"
                   variant="standard"
                   disabled={modelState != 'ready'}
                   onChange={(e) => setNegativePrompt(e.target.value)}
                   value={negativePrompt}
-                />
+                /> */}
                 <TextField
-                  label="Number of inference steps (Because of PNDM Scheduler, it will be i+1)"
+                  label="Number of inference steps"
                   variant="standard"
                   type='number'
                   disabled={modelState != 'ready'}
                   onChange={(e) => setInferenceSteps(parseInt(e.target.value))}
                   value={inferenceSteps}
                 />
-                <TextField
+                {/* <TextField
                   label="Guidance Scale. Controls how similar the generated image will be to the prompt."
                   variant="standard"
                   type='number'
                   InputProps={{ inputProps: { min: 1, max: 20, step: 0.5 } }}
-                  disabled={modelState != 'ready'}
+                  // disabled={modelState != 'ready'}
                   onChange={(e) => setGuidanceScale(parseFloat(e.target.value))}
                   value={guidanceScale}
-                />
+                /> */}
                 <TextField
-                  label="Seed (Creates initial random noise)"
+                  label="Seed"
                   variant="standard"
                   disabled={modelState != 'ready'}
                   onChange={(e) => setSeed(e.target.value)}
@@ -386,13 +518,98 @@ function App() {
                       />
                     </>
                 )}
-                <FormControlLabel
+                {/* <FormControlLabel
                   label="Check if you want to run VAE after each step"
                   control={<Checkbox
                     disabled={modelState != 'ready'}
                     onChange={(e) => setRunVaeOnEachStep(e.target.checked)}
                     checked={runVaeOnEachStep}
                   />}
+                /> */}
+                <FormControl fullWidth>
+                  <InputLabel id="demo-simple-select-label">Pipeline</InputLabel>
+                    <Select
+                      value={selectedPipeline?.name}
+                      onChange={e => {
+                        setSelectedPipeline(pipelines.find(p => e.target.value === p.name))
+                        setModelState('none')
+                      }}>
+                      {pipelines.map(p => <MenuItem value={p.name} disabled={!hasF16 && p.fp16}>{p.name}</MenuItem>)}
+                    </Select>
+                </FormControl>
+                {/* <p>Press the button below to download model. It will be stored in your browser cache.</p>
+                <p>All settings above will become editable once model is downloaded.</p> */}
+                <Button variant="outlined" onClick={loadModel} disabled={modelState != 'none'}>Load model</Button>
+                <Button variant="outlined" onClick={runInference} disabled={modelState != 'ready'}>Run</Button>
+                <p>{status}</p>
+                {/* <p><a href={'https://github.com/dakenf'}>Follow me on GitHub</a></p> */}
+              </Stack>
+            </Grid>
+            <Grid item xs={6}>
+              <ImageList variant='quilted' style={{ border: '1px dashed #ccc'}} sx={{ width: 512, height: 512}} cols={1} gap={8}>
+                  {urls.map((item) => {
+                    return (
+                      <ImageListItem key={item.index}>
+                        <img src={item.canvasUrl} alt={item.index}/>
+                        <ImageListItemBar
+                          subtitle={item.index}
+                        />
+                      </ImageListItem>
+                  )})}
+                </ImageList>
+              <canvas id={'canvas'} width={selectedPipeline?.width} height={selectedPipeline?.height} style={{ border: '1px dashed #ccc'}} hidden/>
+            </Grid>
+          </Grid>
+        </Box>
+        <Divider/>
+        </CustomTabPanel>
+        <CustomTabPanel value={tab} index={1}>
+        <Box sx={{ bgcolor: '#282c34' }} pt={4} pl={3} pr={3} pb={4}>
+          <Grid container spacing={2}>
+            <Grid item xs={6}>
+              <Stack spacing={2}>
+                <TextField
+                  label="Prompt from"
+                  variant="standard"
+                  sx={{ width: '100%' }}
+                  onChange={(e) => setPromptA(e.target.value)}
+                  disabled={modelState != 'ready'}
+                  value={promptA}
+                />
+                <TextField
+                  label="Prompt to"
+                  variant="standard"
+                  sx={{ width: '100%' }}
+                  onChange={(e) => setPromptB(e.target.value)}
+                  disabled={modelState != 'ready'}
+                  value={promptB}
+                />
+                <TextField
+                  label="Number of images"
+                  variant="standard"
+                  type='number'
+                  sx={{ width: '100%' }}
+                  InputProps={{ inputProps: { min: 1, max: 10, step: 1 } }}
+                  onChange={(e) => setNumImages(parseInt(e.target.value))}
+                  disabled={modelState != 'ready'}
+                  value={numImages}
+                />
+                <TextField
+                  label="Number of inference steps"
+                  variant="standard"
+                  type='number'
+                  sx={{ width: '100%' }}
+                  onChange={(e) => setInferenceSteps(parseInt(e.target.value))}
+                  disabled={modelState != 'ready'}
+                  value={inferenceSteps}
+                />
+                <TextField
+                  label="Seed"
+                  variant="standard"
+                  sx={{ width: '100%' }}
+                  onChange={(e) => setSeed(e.target.value)}
+                  disabled={modelState != 'ready'}
+                  value={seed}
                 />
                 <FormControl fullWidth>
                   <InputLabel id="demo-simple-select-label">Pipeline</InputLabel>
@@ -405,22 +622,158 @@ function App() {
                       {pipelines.map(p => <MenuItem value={p.name} disabled={!hasF16 && p.fp16}>{p.name}</MenuItem>)}
                     </Select>
                 </FormControl>
-                <p>Press the button below to download model. It will be stored in your browser cache.</p>
-                <p>All settings above will become editable once model is downloaded.</p>
-                <Button variant="outlined" onClick={loadModel} disabled={modelState != 'none'}>Load model</Button>
-                <Button variant="outlined" onClick={runInference} disabled={modelState != 'ready'}>Run</Button>
+                <p> <Button variant="outlined" onClick={loadModel} disabled={modelState != 'none'} fullWidth>Load model</Button> </p>
+                <p> <Button variant="outlined" onClick={runInference} disabled={modelState != 'ready'} fullWidth>Run</Button> </p>
                 <p>{status}</p>
-                <p><a href={'https://github.com/dakenf'}>Follow me on GitHub</a></p>
-              </Stack>
-
+              </Stack> 
             </Grid>
             <Grid item xs={6}>
-              <canvas id={'canvas'} width={selectedPipeline?.width} height={selectedPipeline?.height} style={{ border: '1px dashed #ccc'}} />
+                <ImageList variant='quilted' style={{ border: '1px dashed #ccc'}} sx={{ width: 512, height: 512}} cols={1} gap={8}>
+                  {urls.map((item) => {
+                    return (
+                      <ImageListItem key={item.index}>
+                        <img src={item.canvasUrl} alt={item.index}/>
+                        <ImageListItemBar
+                          subtitle={item.index}
+                        />
+                      </ImageListItem>
+                  )})}
+                </ImageList>
+              <canvas id={'canvas'} width={selectedPipeline?.width} height={selectedPipeline?.height} style={{ border: '1px dashed #ccc'}} hidden/>
             </Grid>
           </Grid>
-        </Box>
-        <Divider/>
-        <FAQ />
+          </Box>
+        </CustomTabPanel>
+        <CustomTabPanel value={tab} index={2}>
+          <Box sx={{ bgcolor: '#282c34' }} pt={4} pl={3} pr={3} pb={4}>
+          <Grid container spacing={2}>
+            <Grid item xs={6}>
+              <Stack spacing={2}>
+                <TextField
+                  label="Prompt"
+                  variant="standard"
+                  sx={{ width: '100%' }}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  disabled={modelState != 'ready'}
+                  value={prompt}
+                />
+                <TextField
+                  label="Number of images"
+                  variant="standard"
+                  type='number'
+                  sx={{ width: '100%' }}
+                  InputProps={{ inputProps: { min: 1, max: 10, step: 1 } }}
+                  onChange={(e) => setNumImages(parseInt(e.target.value))}
+                  disabled={modelState != 'ready'}
+                  value={numImages}
+                />
+                <TextField
+                  label="Differentiation"
+                  variant="standard"
+                  type='number'
+                  sx={{ width: '100%' }}
+                  InputProps={{ inputProps: { min: 0, max: 1} }}
+                  onChange={(e) => setDifferentiation(parseFloat(e.target.value))}
+                  disabled={modelState != 'ready'}
+                  value={differentiation}
+                />
+                <TextField
+                  label="Number of inference steps"
+                  variant="standard"
+                  type='number'
+                  sx={{ width: '100%' }}
+                  disabled={modelState != 'ready'}
+                  onChange={(e) => setInferenceSteps(parseInt(e.target.value))}
+                  value={inferenceSteps}
+                />
+                <TextField
+                  label="Seed"
+                  variant="standard"
+                  sx={{ width: '100%' }}
+                  disabled={modelState != 'ready'}
+                  onChange={(e) => setSeed(e.target.value)}
+                  value={seed}
+                />
+                <FormControl fullWidth>
+                  <InputLabel id="demo-simple-select-label">Pipeline</InputLabel>
+                    <Select
+                      value={selectedPipeline?.name}
+                      onChange={e => {
+                        setSelectedPipeline(pipelines.find(p => e.target.value === p.name))
+                        setModelState('none')
+                      }}>
+                      {pipelines.map(p => <MenuItem value={p.name} disabled={!hasF16 && p.fp16}>{p.name}</MenuItem>)}
+                    </Select>
+                </FormControl>
+                <p> <Button variant="outlined" onClick={loadModel} disabled={modelState != 'none'} fullWidth>Load model</Button> </p>
+                <p> <Button variant="outlined" onClick={runInference} disabled={modelState != 'ready'} fullWidth>Run</Button> </p>
+                <p>{status}</p>
+              </Stack> 
+            </Grid>
+            <Grid item xs={6}>
+                <ImageList variant='quilted' style={{ border: '1px dashed #ccc'}} sx={{ width: 512, height: 512}} cols={1} gap={8}>
+                  {urls.map((item) => {
+                    return (
+                      <ImageListItem key={item.index}>
+                        <img src={item.canvasUrl} alt={item.index}/>
+                        <ImageListItemBar
+                          subtitle={item.index}
+                        />
+                      </ImageListItem>
+                  )})}
+                </ImageList>
+              <canvas id={'canvas'} width={selectedPipeline?.width} height={selectedPipeline?.height} style={{ border: '1px dashed #ccc'}} hidden/>
+            </Grid>
+          </Grid>
+          </Box>
+        </CustomTabPanel>
+        <CustomTabPanel value={tab} index={3}>
+            <Box sx={{ bgcolor: '#282c34' }} pt={4} pl={3} pr={3} pb={4}>
+              <Stack spacing={2}>
+              <TextField
+                label="Prompt"
+                variant="standard"
+                sx={{ width: '100%' }}
+                onChange={(e) => setPrompt(e.target.value)}
+                value={prompt}
+              />
+              <TextField
+                label="Number of images to retrieve"
+                variant="standard"
+                type='number'
+                sx={{ width: '100%' }}
+                InputProps={{ inputProps: { min: 0, max: 50, step: 1 } }}
+                onChange={(e) => setNumImages(parseInt(e.target.value))}
+                value={numImages}
+              />
+              <p>
+                <Button variant="outlined" onClick={()=>{
+                    RetrieveImages(prompt, numImages).then((item) => {
+                      setUrlCaptions(item);
+                    });
+                  }}>Retrieve</Button>
+              </p>
+              <ImageList variant='quilted' style={{ border: '1px dashed #ccc'}} sx={{ width: '100%', height: 512}} cols={3} gap={8}>
+                {urlCaptions.map((item, index) => (
+                  <ImageListItem key={index}>
+                    <img
+                      crossOrigin='anonymous'
+                      src={`${item.url}`}
+                      loading="lazy"
+                      alt={item.caption}
+                    />
+                    <ImageListItemBar
+                      subtitle={item.caption}
+                    />
+                  </ImageListItem>
+                ))}
+              </ImageList>
+              </Stack>
+            </Box>
+          </CustomTabPanel>
+        <Stack alignItems={'center'}>
+          <p>Built with <a href={"https://github.com/dakenf/diffusers.js"} target={"_blank"}>diffusers.js</a></p>
+        </Stack>
       </Container>
     </ThemeProvider>
   );
