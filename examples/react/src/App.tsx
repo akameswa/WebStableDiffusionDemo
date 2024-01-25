@@ -8,6 +8,7 @@ import {
   StableDiffusionPipeline,
   StableDiffusionXLPipeline,
   LatentConsistencyModelPipeline,
+  SeedPipeline,
   CirclePipeline,
   PromptInterpolationPipeline
 } from '@aislamov/diffusers.js'
@@ -177,6 +178,11 @@ function App() {
           }
         )
       }else if(tab==3){
+        if (pipeline.current) {
+          // @ts-ignore
+          pipeline.current.release()
+        }
+        pipeline.current = await SeedPipeline.fromPretrained(
           selectedPipeline.repo,
           {
             revision: selectedPipeline?.revision,
@@ -349,6 +355,11 @@ function App() {
         seturls(links)
         setModelState('ready')
     }
+    else if(pipeline.current instanceof SeedPipeline){
+      const [images] = await pipeline.current.run({
+        prompt: prompt,
+        numImages: numImages,
+        numInferenceSteps: inferenceSteps,
         progressCallback,
       })
       for(let i = 0; i < numImages; i++) {
@@ -371,6 +382,7 @@ function App() {
             <Tab label="Poke" />
             <Tab label="Interpolate" />
             <Tab label="Circle" />
+            <Tab label="Seed" />
             <Tab label="Dataset Peek" />
           </Tabs>
         <CustomTabPanel value={tab} index={0}>
@@ -669,6 +681,71 @@ function App() {
           </Box>
         </CustomTabPanel>
         <CustomTabPanel value={tab} index={3}>
+          <Box sx={{ bgcolor: '#282c34' }} pt={4} pl={3} pr={3} pb={4}>
+          <Grid container spacing={2}>
+            <Grid item xs={6}>
+              <Stack spacing={2}>
+                <TextField
+                  label="Prompt"
+                  variant="standard"
+                  sx={{ width: '100%' }}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  disabled={modelState != 'ready'}
+                  value={prompt}
+                />
+                <TextField
+                  label="Number of images"
+                  variant="standard"
+                  type='number'
+                  sx={{ width: '100%' }}
+                  InputProps={{ inputProps: { min: 1, max: 10, step: 1 } }}
+                  onChange={(e) => setNumImages(parseInt(e.target.value))}
+                  disabled={modelState != 'ready'}
+                  value={numImages}
+                />
+                <TextField
+                  label="Number of inference steps"
+                  variant="standard"
+                  type='number'
+                  sx={{ width: '100%' }}
+                  disabled={modelState != 'ready'}
+                  onChange={(e) => setInferenceSteps(parseInt(e.target.value))}
+                  value={inferenceSteps}
+                />
+                <FormControl fullWidth>
+                  <InputLabel id="demo-simple-select-label">Pipeline</InputLabel>
+                    <Select
+                      value={selectedPipeline?.name}
+                      onChange={e => {
+                        setSelectedPipeline(pipelines.find(p => e.target.value === p.name))
+                        setModelState('none')
+                      }}>
+                      {pipelines.map(p => <MenuItem value={p.name} disabled={!hasF16 && p.fp16}>{p.name}</MenuItem>)}
+                    </Select>
+                </FormControl>
+                <p> <Button variant="outlined" onClick={loadModel} disabled={modelState != 'none'} fullWidth>Load model</Button> </p>
+                <p> <Button variant="outlined" onClick={runInference} disabled={modelState != 'ready'} fullWidth>Run</Button> </p>
+                <p>{status}</p>
+              </Stack> 
+            </Grid>
+            <Grid item xs={6}>
+                <ImageList variant='quilted' style={{ border: '1px dashed #ccc'}} sx={{ width: 512, height: 512}} cols={1} gap={8}>
+                  {urls.map((item) => {
+                    return (
+                      <ImageListItem key={item.index}>
+                        <img src={item.canvasUrl} alt={item.index}/>
+                        <ImageListItemBar
+                          subtitle={item.index}
+                        />
+                      </ImageListItem>
+                  )})}
+                </ImageList>
+              <canvas id={'canvas'} width={selectedPipeline?.width} height={selectedPipeline?.height} style={{ border: '1px dashed #ccc'}} hidden/>
+            </Grid>
+          </Grid>
+          </Box>
+        </CustomTabPanel>
+        <CustomTabPanel value={tab} index={4}>
             <Box sx={{ bgcolor: '#282c34' }} pt={4} pl={3} pr={3} pb={4}>
               <Stack spacing={2}>
               <TextField
