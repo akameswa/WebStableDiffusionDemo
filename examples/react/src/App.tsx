@@ -8,7 +8,7 @@ import {
   StableDiffusionPipeline,
   StableDiffusionXLPipeline,
   LatentConsistencyModelPipeline,
-  SimilarImagePipeline,
+  CirclePipeline,
   PromptInterpolationPipeline
 } from '@aislamov/diffusers.js'
 import CssBaseline from '@mui/material/CssBaseline';
@@ -243,7 +243,14 @@ function App() {
           // @ts-ignore
           pipeline.current.release()
         }
-        pipeline.current = await SimilarImagePipeline.fromPretrained(
+        pipeline.current = await CirclePipeline.fromPretrained(
+          selectedPipeline.repo,
+          {
+            revision: selectedPipeline?.revision,
+            progressCallback
+          }
+        )
+      }else if(tab==3){
           selectedPipeline.repo,
           {
             revision: selectedPipeline?.revision,
@@ -399,7 +406,7 @@ function App() {
         seturls(links)
         setModelState('ready')
     }
-    else if(pipeline.current instanceof SimilarImagePipeline){
+    else if(pipeline.current instanceof CirclePipeline){
         const [images] = await pipeline.current.run({
           prompt: prompt,
           numImages: numImages,
@@ -408,6 +415,14 @@ function App() {
           seed: seed,
           width: selectedPipeline?.width,
           height: selectedPipeline?.height,
+          progressCallback,
+        })
+        for(let i = 0; i < numImages; i++) {
+          await drawImage(images[i][0], (i+1).toString())
+        }
+        seturls(links)
+        setModelState('ready')
+    }
           progressCallback,
         })
         for(let i = 0; i < numImages; i++) {
@@ -428,8 +443,7 @@ function App() {
           setModelState('none')
         }} centered>
             <Tab label="Poke" />
-            <Tab label="Prompt Interpolation" />
-            <Tab label="Similar Image Generation" />
+            <Tab label="Circle" />
             <Tab label="Dataset Peek" />
           </Tabs>
         <CustomTabPanel value={tab} index={0}>

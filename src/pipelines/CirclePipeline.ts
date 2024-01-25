@@ -10,7 +10,7 @@ import { DiffusionPipeline } from '@/pipelines/DiffusionPipeline'
 import { PipelineBase } from '@/pipelines/PipelineBase'
 import * as tf from '@tensorflow/tfjs';
 
-export interface SimilarImageInput {
+export interface CircleInput {
   prompt: string
   numImages: number
   differentiation: number
@@ -28,7 +28,7 @@ export interface SimilarImageInput {
   strength?: number
 }
 
-export class SimilarImagePipeline extends PipelineBase {
+export class CirclePipeline extends PipelineBase {
   declare public scheduler: LCMScheduler
 
   constructor (unet: Session, vaeDecoder: Session, vaeEncoder: Session, textEncoder: Session, tokenizer: CLIPTokenizer, scheduler: LCMScheduler) {
@@ -66,13 +66,13 @@ export class SimilarImagePipeline extends PipelineBase {
     const vaeEncoder = await loadModel(modelRepoOrPath, 'vae_encoder/model.onnx', opts)
     const vae = await loadModel(modelRepoOrPath, 'vae_decoder/model.onnx', opts)
     const schedulerConfig = await getModelJSON(modelRepoOrPath, 'scheduler/scheduler_config.json', true, opts)
-    const scheduler = SimilarImagePipeline.createScheduler(schedulerConfig)
+    const scheduler = CirclePipeline.createScheduler(schedulerConfig)
 
     const tokenizer = await CLIPTokenizer.from_pretrained(modelRepoOrPath, { ...opts, subdir: 'tokenizer' })
     await dispatchProgress(opts.progressCallback, {
       status: ProgressStatus.Ready,
     })
-    return new SimilarImagePipeline(unet, vae, vaeEncoder, textEncoder, tokenizer, scheduler)
+    return new CirclePipeline(unet, vae, vaeEncoder, textEncoder, tokenizer, scheduler)
   }
 
   getWEmbedding (batchSize: number, guidanceScale: number, embeddingDim = 512) {
@@ -96,7 +96,7 @@ export class SimilarImagePipeline extends PipelineBase {
     await this.textEncoder?.release()
   }
 
-  async run (input: SimilarImageInput) {
+  async run (input: CircleInput) {
     const width = input.width || this.unet.config.sample_size as number * this.vaeScaleFactor
     const height = input.height || this.unet.config.sample_size as number * this.vaeScaleFactor
     const batchSize = 1
