@@ -8,6 +8,7 @@ import {
   StableDiffusionPipeline,
   StableDiffusionXLPipeline,
   LatentConsistencyModelPipeline,
+  AnimationPipeline,
   SeedPipeline,
   CirclePipeline,
   PromptInterpolationPipeline
@@ -74,7 +75,7 @@ function App() {
   const [guidanceScale, setGuidanceScale] = useState(1);
   const [seed, setSeed] = useState('69');
   const [status, setStatus] = useState('Ready');
-  const pipeline = useRef<StableDiffusionXLPipeline|StableDiffusionPipeline|StableDiffusionControlNetPipeline|LatentConsistencyModelPipeline|SeedPipeline|CirclePipeline|PromptInterpolationPipeline|null>(null);
+  const pipeline = useRef<StableDiffusionXLPipeline|StableDiffusionPipeline|StableDiffusionControlNetPipeline|LatentConsistencyModelPipeline|AnimationPipeline|SeedPipeline|CirclePipeline|PromptInterpolationPipeline|null>(null);
   const [img2img, setImg2Img] = useState(false);
   const [inputImage, setInputImage] = useState<Float32Array>();
   const [strength, setStrength] = useState(0.8);
@@ -189,7 +190,20 @@ function App() {
             progressCallback
           }
         )
-      }else{
+      }else if(tab==4){
+        if (pipeline.current) {
+          // @ts-ignore
+          pipeline.current.release()
+        }
+        pipeline.current = await AnimationPipeline.fromPretrained(
+          selectedPipeline.repo,
+          {
+            revision: selectedPipeline?.revision,
+            progressCallback
+          }
+        )
+      }
+      else{
         if (pipeline.current) {
           // @ts-ignore
           pipeline.current.release()
@@ -367,7 +381,20 @@ function App() {
       }
       seturls(links)
       setModelState('ready')
-  }
+    }
+    else if(pipeline.current instanceof AnimationPipeline){
+      const [images] = await pipeline.current.run({
+        prompt: prompt,
+        numInferenceSteps: inferenceSteps,
+        seed: seed,
+        progressCallback,
+      })
+      for(let i = 0; i < inferenceSteps; i++) {
+        await drawImage(images[i][0], (i+1).toString())
+      }
+      seturls(links)
+      setModelState('ready')
+    }
   }
 
   return (
@@ -383,6 +410,7 @@ function App() {
             <Tab label="Interpolate" />
             <Tab label="Circle" />
             <Tab label="Seed" />
+            <Tab label="Animation" />
             <Tab label="Dataset Peek" />
           </Tabs>
         <CustomTabPanel value={tab} index={0}>
@@ -746,6 +774,69 @@ function App() {
           </Box>
         </CustomTabPanel>
         <CustomTabPanel value={tab} index={4}>
+          <Box sx={{ bgcolor: '#282c34' }} pt={4} pl={3} pr={3} pb={4}>
+          <Grid container spacing={2}>
+            <Grid item xs={6}>
+              <Stack spacing={2}>
+                <TextField
+                  label="Prompt"
+                  variant="standard"
+                  sx={{ width: '100%' }}
+                  onChange={(e) => setPrompt(e.target.value)}
+                  disabled={modelState != 'ready'}
+                  value={prompt}
+                />
+                <TextField
+                  label="Number of inference steps"
+                  variant="standard"
+                  type='number'
+                  sx={{ width: '100%' }}
+                  disabled={modelState != 'ready'}
+                  onChange={(e) => setInferenceSteps(parseInt(e.target.value))}
+                  value={inferenceSteps}
+                />
+                <TextField
+                  label="Seed"
+                  variant="standard"
+                  sx={{ width: '100%' }}
+                  disabled={modelState != 'ready'}
+                  onChange={(e) => setSeed(e.target.value)}
+                  value={seed}
+                />
+                <FormControl fullWidth>
+                  <InputLabel id="demo-simple-select-label">Pipeline</InputLabel>
+                    <Select
+                      value={selectedPipeline?.name}
+                      onChange={e => {
+                        setSelectedPipeline(pipelines.find(p => e.target.value === p.name))
+                        setModelState('none')
+                      }}>
+                      {pipelines.map(p => <MenuItem value={p.name} disabled={!hasF16 && p.fp16}>{p.name}</MenuItem>)}
+                    </Select>
+                </FormControl>
+                <p> <Button variant="outlined" onClick={loadModel} disabled={modelState != 'none'} fullWidth>Load model</Button> </p>
+                <p> <Button variant="outlined" onClick={runInference} disabled={modelState != 'ready'} fullWidth>Run</Button> </p>
+                <p>{status}</p>
+              </Stack> 
+            </Grid>
+            <Grid item xs={6}>
+                <ImageList variant='quilted' style={{ border: '1px dashed #ccc'}} sx={{ width: 512, height: 512}} cols={1} gap={8}>
+                  {urls.map((item) => {
+                    return (
+                      <ImageListItem key={item.index}>
+                        <img src={item.canvasUrl} alt={item.index}/>
+                        <ImageListItemBar
+                          subtitle={item.index}
+                        />
+                      </ImageListItem>
+                  )})}
+                </ImageList>
+              <canvas id={'canvas'} width={selectedPipeline?.width} height={selectedPipeline?.height} style={{ border: '1px dashed #ccc'}} hidden/>
+            </Grid>
+          </Grid>
+          </Box>
+        </CustomTabPanel>
+        <CustomTabPanel value={tab} index={5}>
             <Box sx={{ bgcolor: '#282c34' }} pt={4} pl={3} pr={3} pb={4}>
               <Stack spacing={2}>
               <TextField
